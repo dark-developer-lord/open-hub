@@ -1,14 +1,14 @@
 {
-  "name": "agent-cli",
-  "version": "1.0.0",
-  "description": "Open-source AI agent for your terminal — 17 providers, MCP support, goal-driven autonomous execution, full system access",
+  "name": "@sultonsho-nazarshoev/open-hub",
+  "version": "1.0.1",
+  "description": "Open-Hub — open-source AI agent for your terminal · 17 providers, MCP, goal-driven autonomous execution, full system access",
   "type": "module",
   "license": "MIT",
-  "author": "agent-cli contributors",
+  "author": "open-hub contributors",
   "homepage": "https://github.com/dark-developer-lord/open-hub#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dark-developer-lord/open-hub.git"
+    "url": "git+https://github.com/dark-developer-lord/open-hub.git"
   },
   "bugs": {
     "url": "https://github.com/dark-developer-lord/open-hub/issues"
@@ -34,7 +34,7 @@
     "node": ">=18"
   },
   "bin": {
-    "agent": "./dist/index.js"
+    "ohagent": "dist/index.js"
   },
   "files": [
     "dist/",

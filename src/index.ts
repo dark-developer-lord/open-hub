@@ -26,8 +26,8 @@ if (initialQuery) {
 // ── CLI Setup ────────────────────────────────────────────────────────────────
 
 program
-  .name('agent')
-  .description('AI Agent CLI — Multi-provider, MCP-connected, Goal-driven')
+  .name('ohagent')
+  .description('Open-Hub — AI Agent · Multi-provider, MCP-connected, Goal-driven')
   .version('1.0.0')
   .option('-p, --print <query>', 'Run query autonomously and exit (non-interactive)')
   .option('-m, --model <model>', 'Model to use (e.g. claude-opus-4-5, gpt-4o)')
@@ -85,7 +85,7 @@ const authCmd = new Command('auth')
       console.log(`  ${p.name}: ${status}`)
     }
     console.log()
-    console.log(colors.muted('  Edit ~/.agent-cli/config.json or set env vars (ANTHROPIC_API_KEY, etc.)'))
+    console.log(colors.muted('  Edit ~/.open-hub/config.json or set env vars (ANTHROPIC_API_KEY, etc.)'))
     process.exit(0)
   })
 program.addCommand(authCmd)
@@ -399,7 +399,7 @@ process.on('SIGINT', async () => {
   if (goalManager.hasActiveGoal()) {
     console.log(colors.warning('\n\n⚠️  Goal interrupted. Use /goal clear to remove it or /goal to check status.'))
   } else {
-    console.log(colors.muted('\n\nInterrupted. Run agent again to continue.'))
+    console.log(colors.muted('\n\nInterrupted. Run ohagent again to continue.'))
   }
   await mcpManager.disconnectAll()
   process.exit(0)

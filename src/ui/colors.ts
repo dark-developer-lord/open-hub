@@ -49,7 +49,7 @@ export const colors = {
 export function banner() {
   return `
 ${colors.primary('┌─────────────────────────────────────────────────────────┐')}
-${colors.primary('│')}  ${colors.goal('◆ AGENT CLI')} ${colors.muted('— AI Agent with MCP & Goal-Driven Execution')}  ${colors.primary('│')}
+${colors.primary('│')}  ${colors.goal('◆ OPEN-HUB')} ${colors.muted('— AI Agent with MCP & Goal-Driven Execution')}  ${colors.primary('│')}
 ${colors.primary('│')}  ${colors.muted('Multi-provider · MCP Connected · Goal Autonomous')}         ${colors.primary('│')}
 ${colors.primary('└─────────────────────────────────────────────────────────┘')}
 `

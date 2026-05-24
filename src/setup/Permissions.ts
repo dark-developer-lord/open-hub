@@ -1,5 +1,5 @@
 /**
- * macOS permission setup — requests all permissions needed by agent-cli.
+ * macOS permission setup — requests all permissions needed by open-hub.
  * Run with: agent setup
  */
 import { exec, execSync } from 'child_process'
@@ -20,16 +20,16 @@ interface PermResult {
 export async function runSetup(): Promise<void> {
   console.log()
   console.log(colors.bold('◆ AGENT CLI — Setup & Permissions'))
-  console.log(colors.muted('  Configuring full system access for agent-cli...'))
+  console.log(colors.muted('  Configuring full system access for open-hub...'))
   console.log(separator())
 
   // ── Config directories ────────────────────────────────────────────────────
-  const configDir = join(homedir(), '.agent-cli')
+  const configDir = join(homedir(), '.open-hub')
   if (!existsSync(configDir)) {
     mkdirSync(configDir, { recursive: true })
-    console.log(colors.success('  ✓ Created ~/.agent-cli/'))
+    console.log(colors.success('  ✓ Created ~/.open-hub/'))
   } else {
-    console.log(colors.success('  ✓ Config dir exists: ~/.agent-cli/'))
+    console.log(colors.success('  ✓ Config dir exists: ~/.open-hub/'))
   }
 
   const cfgFile = join(configDir, 'config.json')
@@ -38,7 +38,7 @@ export async function runSetup(): Promise<void> {
       defaults: { provider: 'anthropic', model: '' },
       agent: { permissionMode: 'bypassPermissions', maxGoalIterations: 200 },
     }, null, 2))
-    console.log(colors.success('  ✓ Created ~/.agent-cli/config.json'))
+    console.log(colors.success('  ✓ Created ~/.open-hub/config.json'))
   }
 
   // ── macOS permissions ─────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ export async function runSetup(): Promise<void> {
   console.log()
   console.log(colors.muted('  Next steps:'))
   console.log(colors.muted('    1. Set an API key:  export ANTHROPIC_API_KEY=sk-ant-...'))
-  console.log(colors.muted('       (or add to ~/.agent-cli/.env or .env in your project)'))
+  console.log(colors.muted('       (or add to ~/.open-hub/.env or .env in your project)'))
   console.log(colors.muted('    2. Run: agent'))
   console.log()
 }
@@ -113,8 +113,8 @@ async function checkNotifications(): Promise<PermResult> {
 
 async function checkScreenRecording(): Promise<PermResult> {
   try {
-    await execAsync('screencapture -x /tmp/.agent-cli-perm-check.png 2>/dev/null', { timeout: 5000 })
-    execSync('rm -f /tmp/.agent-cli-perm-check.png', { stdio: 'ignore' })
+    await execAsync('screencapture -x /tmp/.open-hub-perm-check.png 2>/dev/null', { timeout: 5000 })
+    execSync('rm -f /tmp/.open-hub-perm-check.png', { stdio: 'ignore' })
     return { name: 'Screen Recording', status: 'granted' }
   } catch {
     return {

@@ -75,7 +75,7 @@ export interface MCPServerConfig {
   scope: 'local' | 'project' | 'user'
 }
 
-const CONFIG_DIR = join(homedir(), '.agent-cli')
+const CONFIG_DIR = join(homedir(), '.open-hub')
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
 const MCP_FILE = join(CONFIG_DIR, 'mcp.json')
 

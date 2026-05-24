@@ -57,7 +57,7 @@ const StatusBar = ({ provider, model, mcpCount, tokens, goalActive }: {
   provider: string; model: string; mcpCount: number; tokens: number; goalActive: boolean
 }) => (
   <Box paddingX={1} borderStyle="single" borderColor="cyan">
-    <Text color="cyan" bold>◆ AGENT</Text>
+    <Text color="cyan" bold>◆ OPEN-HUB</Text>
     <Text color="gray">  ·  </Text>
     <Text color="white">{provider}</Text>
     <Text color="gray"> / </Text>
