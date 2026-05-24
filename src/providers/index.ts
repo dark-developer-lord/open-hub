@@ -179,9 +179,29 @@ export class ProviderRegistry {
     return models
   }
 
+  getCurrentProviderId(): string {
+    return this.currentProvider
+  }
+
   getStatus(): string {
     const provider = this.getCurrentProvider()
     return `${provider.name} / ${this.currentModel}`
+  }
+
+  /** Re-init providers from config but keep current selection. */
+  refreshProviders() {
+    const curProvider = this.currentProvider
+    const curModel = this.currentModel
+    this.initProviders()
+    // Restore selection instead of reverting to config defaults
+    try {
+      if (this.providers.has(curProvider)) {
+        this.currentProvider = curProvider
+        this.currentModel = curModel
+      }
+    } catch {
+      // keep whatever initProviders set
+    }
   }
 
   refreshFromConfig() {
@@ -189,6 +209,36 @@ export class ProviderRegistry {
     const cfg = config.get()
     this.currentProvider = cfg.defaults.provider
     this.currentModel = cfg.defaults.model
+  }
+
+  getProvidersInfo(): Array<{
+    id: string
+    name: string
+    configured: boolean
+    keyMasked?: string
+    models: Array<{ id: string; name: string }>
+  }> {
+    const cfg = config.get()
+    const result: Array<{
+      id: string; name: string; configured: boolean; keyMasked?: string
+      models: Array<{ id: string; name: string }>
+    }> = []
+    for (const [id, provider] of this.providers.entries()) {
+      const provCfg = (cfg.providers as Record<string, { apiKey?: string } | undefined>)[id]
+      let keyMasked: string | undefined
+      if (provCfg?.apiKey) {
+        const key = provCfg.apiKey
+        keyMasked = key.length > 8 ? key.slice(0, 4) + '…' + key.slice(-4) : '****'
+      }
+      result.push({
+        id,
+        name: provider.name,
+        configured: provider.isConfigured(),
+        keyMasked,
+        models: provider.models.map(m => ({ id: m.id, name: m.name })),
+      })
+    }
+    return result
   }
 }
 

@@ -258,6 +258,27 @@ async function main() {
       },
       onSlashCommand,
       initialQuery: opts.goal ? undefined : initialQuery,
+      getProviders: () => providerRegistry.getProvidersInfo(),
+      getStatus: () => ({
+        provider: providerRegistry.getCurrentProvider().name,
+        model: providerRegistry.getCurrentModel(),
+      }),
+      onSetModel: (providerId: string, modelId: string) => {
+        providerRegistry.setProvider(providerId, modelId)
+        const cfg = config.get()
+        config.set('defaults', { ...cfg.defaults, provider: providerId, model: modelId })
+      },
+      onSetApiKey: (providerId: string, key: string) => {
+        const cfg = config.get()
+        const providers = cfg.providers as Record<string, { apiKey?: string }>
+        if (key) {
+          providers[providerId] = { ...(providers[providerId] || {}), apiKey: key }
+        } else if (providers[providerId]) {
+          providers[providerId].apiKey = ''
+        }
+        config.set('providers', providers)
+        providerRegistry.refreshProviders()
+      },
     })
 
     // If --goal flag, start goal loop inside TUI
