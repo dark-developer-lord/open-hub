@@ -48,6 +48,8 @@ export abstract class OpenAICompatProvider extends BaseProvider {
     const choice = response.choices[0]
 
     const content: ContentBlock[] = []
+    // DeepSeek-R1 / thinking models return reasoning_content
+    const reasoningContent: string | undefined = (choice.message as any).reasoning_content || undefined
 
     if (choice.message.content) {
       content.push({ type: 'text', text: choice.message.content })
@@ -72,6 +74,7 @@ export abstract class OpenAICompatProvider extends BaseProvider {
         outputTokens: response.usage?.completion_tokens || 0,
       },
       stopReason: this.mapFinishReason(choice.finish_reason),
+      reasoning_content: reasoningContent,
     }
   }
 
@@ -96,6 +99,7 @@ export abstract class OpenAICompatProvider extends BaseProvider {
       return {
         role: 'assistant',
         content: textBlocks.map((b) => (b as { type: 'text'; text: string }).text).join('') || null,
+        ...(msg.reasoning_content ? { reasoning_content: msg.reasoning_content } : {}),
         tool_calls: toolUses.map((b) => {
           const tu = b as ToolUseBlock
           return {
@@ -108,7 +112,11 @@ export abstract class OpenAICompatProvider extends BaseProvider {
     }
 
     const text = textBlocks.map((b) => (b as { type: 'text'; text: string }).text).join('')
-    return { role: msg.role as 'user' | 'assistant' | 'system', content: text }
+    return {
+      role: msg.role as 'user' | 'assistant' | 'system',
+      content: text,
+      ...(msg.reasoning_content ? { reasoning_content: msg.reasoning_content } : {}),
+    } as OpenAI.ChatCompletionMessageParam
   }
 
   protected convertTool(tool: ToolDefinition): OpenAI.ChatCompletionTool {

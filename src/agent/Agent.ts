@@ -140,7 +140,7 @@ export class Agent {
       this.totalTokens.output += response.usage.outputTokens
 
       // Add assistant response to history
-      this.messages.push({ role: 'assistant', content: response.content })
+      this.messages.push({ role: 'assistant', content: response.content, reasoning_content: response.reasoning_content })
 
       // Extract and display text
       const text = response.content

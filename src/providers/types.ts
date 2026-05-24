@@ -3,6 +3,8 @@
 export interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string | ContentBlock[]
+  /** DeepSeek-R1 / thinking-mode: must be echoed back to the API */
+  reasoning_content?: string
 }
 
 export type ContentBlock =
@@ -67,6 +69,8 @@ export interface ChatResponse {
     outputTokens: number
   }
   stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence'
+  /** DeepSeek-R1 thinking content — must be stored and echoed back */
+  reasoning_content?: string
 }
 
 export interface ProviderInfo {
