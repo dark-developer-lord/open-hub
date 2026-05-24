@@ -32,7 +32,7 @@ export abstract class OpenAICompatProvider extends BaseProvider {
   async chat(messages: Message[], options: ChatOptions): Promise<ChatResponse> {
     if (!this.client) throw new Error(`${this.name} API key not configured`)
 
-    const openAIMessages = messages.map((m) => this.convertMessage(m))
+    const openAIMessages = messages.flatMap((m) => this.convertMessages(m))
     const tools = options.tools?.map((t) => this.convertTool(t))
 
     const params: OpenAI.ChatCompletionCreateParamsNonStreaming = {
@@ -78,25 +78,31 @@ export abstract class OpenAICompatProvider extends BaseProvider {
     }
   }
 
-  protected convertMessage(msg: Message): OpenAI.ChatCompletionMessageParam {
+  /** Convert one Message → one or more OpenAI chat params. Tool results expand to N messages (one per call). */
+  protected convertMessages(msg: Message): OpenAI.ChatCompletionMessageParam[] {
     if (typeof msg.content === 'string') {
-      return { role: msg.role as 'user' | 'assistant' | 'system', content: msg.content }
+      return [{ role: msg.role as 'user' | 'assistant' | 'system', content: msg.content }]
     }
 
     const textBlocks = msg.content.filter((b) => b.type === 'text')
     const toolResults = msg.content.filter((b) => b.type === 'tool_result')
     const toolUses = msg.content.filter((b) => b.type === 'tool_use')
 
+    // Each tool result must be its own message with the matching tool_call_id
     if (toolResults.length > 0) {
-      return {
-        role: 'tool',
-        tool_call_id: (msg.content[0] as { type: 'tool_result'; tool_use_id: string }).tool_use_id || '',
-        content: textBlocks.map((b) => (b as { type: 'text'; text: string }).text).join('') || JSON.stringify(msg.content),
-      } as OpenAI.ChatCompletionToolMessageParam
+      return toolResults.map((b) => {
+        const tr = b as { type: 'tool_result'; tool_use_id: string; content: string | unknown[] }
+        const content = typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content)
+        return {
+          role: 'tool' as const,
+          tool_call_id: tr.tool_use_id || '',
+          content,
+        } as OpenAI.ChatCompletionToolMessageParam
+      })
     }
 
     if (toolUses.length > 0 && msg.role === 'assistant') {
-      return {
+      return [{
         role: 'assistant',
         content: textBlocks.map((b) => (b as { type: 'text'; text: string }).text).join('') || null,
         ...(msg.reasoning_content ? { reasoning_content: msg.reasoning_content } : {}),
@@ -108,15 +114,20 @@ export abstract class OpenAICompatProvider extends BaseProvider {
             function: { name: tu.name, arguments: JSON.stringify(tu.input) },
           }
         }),
-      }
+      }]
     }
 
     const text = textBlocks.map((b) => (b as { type: 'text'; text: string }).text).join('')
-    return {
+    return [{
       role: msg.role as 'user' | 'assistant' | 'system',
       content: text,
       ...(msg.reasoning_content ? { reasoning_content: msg.reasoning_content } : {}),
-    } as OpenAI.ChatCompletionMessageParam
+    } as OpenAI.ChatCompletionMessageParam]
+  }
+
+  /** @deprecated Use convertMessages() instead */
+  protected convertMessage(msg: Message): OpenAI.ChatCompletionMessageParam {
+    return this.convertMessages(msg)[0]
   }
 
   protected convertTool(tool: ToolDefinition): OpenAI.ChatCompletionTool {
