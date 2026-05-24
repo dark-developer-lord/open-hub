@@ -174,8 +174,8 @@ async function main() {
       const session = sessionManager.load(opts.resume) || sessionManager.loadByName(opts.resume)
       if (session) agent.setMessages(session.messages)
     }
-    // Run as goal loop for full autonomous execution
-    await agent.runGoalLoop(opts.print)
+    // Single chat turn — print response and exit
+    await agent.turn(opts.print)
     await mcpManager.disconnectAll()
     process.exit(0)
   }
@@ -216,9 +216,9 @@ async function main() {
   console.log(colors.muted('  /help for commands  ·  /goal <задача> для автономного режима'))
   console.log()
 
-  // If query was passed as positional arg, run as goal loop immediately
+  // If query was passed as positional arg, send as first message then continue REPL
   if (initialQuery) {
-    await agent.runGoalLoop(initialQuery)
+    await agent.turn(initialQuery)
   }
 
   // Handle explicit --goal flag

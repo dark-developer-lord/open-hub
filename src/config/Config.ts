@@ -3,7 +3,9 @@ import { homedir } from 'os'
 import { join, dirname } from 'path'
 import dotenv from 'dotenv'
 
+// Load .env, then .env.local (local overrides base)
 dotenv.config()
+dotenv.config({ path: '.env.local', override: true })
 
 export interface CustomProviderModelConfig {
   id: string
