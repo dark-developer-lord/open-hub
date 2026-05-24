@@ -270,8 +270,19 @@ export class Agent {
           console.log(separator())
           break
         }
-      } catch (err) {
-        console.error(colors.error('\nError during goal execution:'), err)
+      } catch (err: any) {
+        const isConnErr = err?.cause?.code === 'ECONNREFUSED' || err?.code === 'ECONNREFUSED'
+        if (isConnErr) {
+          const currentProvider = (this as any).provider?.name || 'provider'
+          console.error(colors.error(`\n✗ Connection refused — ${currentProvider} is not reachable.`))
+          console.error(colors.muted('  If using Ollama, run: ollama serve'))
+          console.error(colors.muted('  Or set an API key: export ANTHROPIC_API_KEY=sk-ant-...'))
+        } else if (err?.status === 401 || err?.status === 403) {
+          console.error(colors.error('\n✗ Authentication failed — check your API key.'))
+          console.error(colors.muted('  Run: agent auth'))
+        } else {
+          console.error(colors.error('\n✗ Error:'), err?.message ?? String(err))
+        }
         goalManager.markFailed(String(err))
         break
       }

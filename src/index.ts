@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createInterface } from 'readline'
-import { program } from 'commander'
+import { program, Command } from 'commander'
 import { agent } from './agent/Agent.js'
 import { goalManager } from './agent/GoalManager.js'
 import { commandRegistry } from './commands/CommandRegistry.js'
@@ -11,49 +11,61 @@ import { colors, banner, separator } from './ui/colors.js'
 import config from './config/Config.js'
 import { readFileSync, existsSync } from 'fs'
 
+// Extract positional query BEFORE commander parses (avoids "unknown command" error)
+const KNOWN_SUBCOMMANDS = ['mcp', 'auth', 'help']
+const rawArgs = process.argv.slice(2)
+const firstPositional = rawArgs.find(a => !a.startsWith('-') && !rawArgs[rawArgs.indexOf(a) - 1]?.match(/^(-p|--print|-m|--model|--provider|-r|--resume|--goal|--mcp-config|--permission-mode|--max-tokens|--max-iterations)$/))
+const initialQuery = firstPositional && !KNOWN_SUBCOMMANDS.includes(firstPositional) ? firstPositional : undefined
+
+// Remove the query from argv so commander doesn't see it as an unknown command
+if (initialQuery) {
+  const idx = process.argv.indexOf(initialQuery)
+  process.argv.splice(idx, 1)
+}
+
 // ── CLI Setup ────────────────────────────────────────────────────────────────
 
 program
   .name('agent')
   .description('AI Agent CLI — Multi-provider, MCP-connected, Goal-driven')
   .version('1.0.0')
-  .argument('[query]', 'Initial query or task')
-  .option('-p, --print <query>', 'Non-interactive: print response and exit')
+  .option('-p, --print <query>', 'Run query autonomously and exit (non-interactive)')
   .option('-m, --model <model>', 'Model to use (e.g. claude-opus-4-5, gpt-4o)')
   .option('--provider <provider>', 'Provider to use (anthropic, openai, google, groq)')
   .option('-c, --continue', 'Continue most recent session')
   .option('-r, --resume <session>', 'Resume session by ID or name')
-  .option('--goal <condition>', 'Start with a goal — agent runs until achieved')
+  .option('--goal <condition>', 'Explicit goal — agent loops until achieved')
   .option('--mcp-config <path>', 'Load MCP servers from JSON file')
   .option('--permission-mode <mode>', 'Permission mode (default, plan, bypassPermissions)')
   .option('--max-tokens <n>', 'Max output tokens per turn (default: 32768)')
   .option('--max-iterations <n>', 'Max goal loop iterations (default: 200)')
   .option('--verbose', 'Verbose tool output')
   .option('--no-banner', 'Skip the banner')
+  .allowUnknownOption(false)
+  .allowExcessArguments(true)
+  .action(() => { /* default action — prevents commander from showing help on no-args */ })
 
 // ── Subcommands ──────────────────────────────────────────────────────────────
 
-program
-  .command('mcp')
-  .description('Manage MCP servers (use /mcp inside session for interactive management)')
-  .option('list', 'List configured servers')
-  .action(async (options) => {
+const mcpCmd = new Command('mcp')
+  .description('List configured MCP servers')
+  .action(async () => {
     const servers = config.loadMCPServers()
     const entries = Object.entries(servers)
     if (entries.length === 0) {
-      console.log(colors.muted('No MCP servers configured'))
-      return
+      console.log(colors.muted('No MCP servers configured. Use /mcp inside a session to add one.'))
+    } else {
+      console.log(`\n${colors.bold('MCP Servers')}`)
+      for (const [name, cfg] of entries) {
+        console.log(`  ${colors.accent(name)} [${cfg.type}] ${cfg.url || cfg.command || ''}`)
+      }
     }
-    console.log(`\n${colors.bold('MCP Servers')}`)
-    for (const [name, cfg] of entries) {
-      console.log(`  ${colors.accent(name)} [${cfg.type}] ${cfg.url || cfg.command || ''}`)
-    }
+    process.exit(0)
   })
+program.addCommand(mcpCmd)
 
-program
-  .command('auth')
-  .description('Manage authentication')
-  .command('status')
+const authCmd = new Command('auth')
+  .description('Show configured API keys')
   .action(() => {
     const cfg = config.get()
     console.log(`\n${colors.bold('Authentication Status')}`)
@@ -63,19 +75,25 @@ program
       { name: 'OpenAI', key: cfg.providers.openai?.apiKey },
       { name: 'Google', key: cfg.providers.google?.apiKey },
       { name: 'Groq', key: cfg.providers.groq?.apiKey },
+      { name: 'Mistral', key: cfg.providers.mistral?.apiKey },
+      { name: 'xAI', key: cfg.providers.xai?.apiKey },
+      { name: 'DeepSeek', key: cfg.providers.deepseek?.apiKey },
     ]
     for (const p of providers) {
       const status = p.key ? colors.success('✓ configured') : colors.error('✗ not set')
       console.log(`  ${p.name}: ${status}`)
     }
+    console.log()
+    console.log(colors.muted('  Edit ~/.agent-cli/config.json or set env vars (ANTHROPIC_API_KEY, etc.)'))
+    process.exit(0)
   })
+program.addCommand(authCmd)
 
 // ── Main Function ────────────────────────────────────────────────────────────
 
 async function main() {
   program.parse()
   const opts = program.opts()
-  const args = program.args
 
   // Apply CLI options to config
   if (opts.provider || opts.model) {
@@ -120,25 +138,49 @@ async function main() {
   // Load MCP servers
   await mcpManager.loadServers()
 
-  // Non-interactive print mode: agent -p "query"
+  // ── Check configured providers ─────────────────────────────────────────────
+  const configuredProviders = providerRegistry.listConfiguredProviders()
+  if (configuredProviders.length === 0) {
+    console.log()
+    console.log(colors.warning('⚠️  No AI provider configured.'))
+    console.log()
+    console.log(colors.muted('  Set at least one API key to get started:'))
+    console.log(colors.muted('    export ANTHROPIC_API_KEY=sk-ant-...'))
+    console.log(colors.muted('    export OPENAI_API_KEY=sk-...'))
+    console.log(colors.muted('    export GROQ_API_KEY=...  (free tier available — groq.com)'))
+    console.log()
+    console.log(colors.muted('  Or copy and edit the config file:'))
+    console.log(colors.muted('    cp .env.example .env && nano .env'))
+    console.log()
+    process.exit(1)
+  }
+
+  // Auto-switch to a configured provider if the default one has no key
+  const defaultProvider = config.get().defaults.provider
+  if (!configuredProviders.includes(defaultProvider)) {
+    const first = configuredProviders[0]
+    providerRegistry.setProvider(first)
+  }
+
+  // ── Non-interactive mode: agent -p "query" ─────────────────────────────────
+  const query = opts.print || initialQuery
+
   if (opts.print) {
+    // Restore session if requested
     if (opts.continue) {
       const recent = sessionManager.getMostRecent(process.cwd())
       if (recent) agent.setMessages(recent.messages)
-    }
-    if (opts.resume) {
+    } else if (opts.resume) {
       const session = sessionManager.load(opts.resume) || sessionManager.loadByName(opts.resume)
       if (session) agent.setMessages(session.messages)
     }
-    const result = await agent.turn(opts.print)
-    if (!result.text) {
-      // text was printed inline, nothing more needed
-    }
+    // Run as goal loop for full autonomous execution
+    await agent.runGoalLoop(opts.print)
     await mcpManager.disconnectAll()
     process.exit(0)
   }
 
-  // Interactive REPL mode
+  // ── Interactive REPL mode ──────────────────────────────────────────────────
   if (!opts.noBanner) {
     console.log(banner())
   }
@@ -161,33 +203,25 @@ async function main() {
       console.error(colors.error(`Session '${opts.resume}' not found`))
     }
   } else {
-    // Create new session
     const session = sessionManager.createSession()
     sessionManager.setCurrentSessionId(session.meta.id)
   }
 
   // Print provider status
-  const configuredProviders = providerRegistry.listConfiguredProviders()
-  if (configuredProviders.length === 0) {
-    console.log(colors.warning('⚠️  No AI providers configured. Copy .env.example to .env and add API keys.'))
-    console.log(colors.muted('   Then run: cp .env.example .env && nano .env'))
-    console.log()
-  } else {
-    const provider = providerRegistry.getCurrentProvider()
-    const model = providerRegistry.getCurrentModel()
-    const mcpCount = mcpManager.getAllServers().filter((s) => s.connected).length
-    const mcpInfo = mcpCount > 0 ? colors.muted(` · ${mcpCount} MCP servers`) : ''
-    console.log(colors.muted(`  ${provider.name} / ${model}${mcpInfo}`))
-    console.log(colors.muted(`  Type /help for commands, /goal <task> for autonomous execution`))
-    console.log()
+  const provider = providerRegistry.getCurrentProvider()
+  const model = providerRegistry.getCurrentModel()
+  const mcpCount = mcpManager.getAllServers().filter((s) => s.connected).length
+  const mcpInfo = mcpCount > 0 ? colors.muted(` · ${mcpCount} MCP`) : ''
+  console.log(colors.muted(`  ${provider.name} / ${model}${mcpInfo}`))
+  console.log(colors.muted('  /help for commands  ·  /goal <задача> для автономного режима'))
+  console.log()
+
+  // If query was passed as positional arg, run as goal loop immediately
+  if (initialQuery) {
+    await agent.runGoalLoop(initialQuery)
   }
 
-  // Handle initial query from args
-  if (args[0] && !['mcp', 'auth'].includes(args[0])) {
-    await agent.turn(args[0])
-  }
-
-  // Handle --goal flag
+  // Handle explicit --goal flag
   if (opts.goal) {
     await agent.runGoalLoop(opts.goal)
   }
@@ -266,8 +300,17 @@ async function startREPL(verbose: boolean) {
       try {
         await agent.turn(input)
         saveCurrentSession()
-      } catch (err) {
-        console.error(colors.error('\nError: ') + String(err))
+      } catch (err: any) {
+        const isConnErr = err?.cause?.code === 'ECONNREFUSED' || err?.code === 'ECONNREFUSED'
+        if (isConnErr) {
+          console.error(colors.error('\n✗ Connection refused — is the provider reachable?'))
+          console.error(colors.muted('  If using Ollama: ollama serve'))
+          console.error(colors.muted('  Or set an API key: export ANTHROPIC_API_KEY=sk-ant-...'))
+        } else if (err?.status === 401 || err?.status === 403) {
+          console.error(colors.error('\n✗ Authentication failed — check your API key (run: agent auth)'))
+        } else {
+          console.error(colors.error('\n✗ ') + (err?.message ?? String(err)))
+        }
       }
 
       prompt()
