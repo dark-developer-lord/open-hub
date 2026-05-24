@@ -1,0 +1,76 @@
+{
+  "name": "agent-cli",
+  "version": "1.0.0",
+  "description": "Open-source AI agent for your terminal — 17 providers, MCP support, goal-driven autonomous execution, full system access",
+  "type": "module",
+  "license": "MIT",
+  "author": "agent-cli contributors",
+  "homepage": "https://github.com/dark-developer-lord/open-hub#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dark-developer-lord/open-hub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dark-developer-lord/open-hub/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "llm",
+    "openai",
+    "anthropic",
+    "claude",
+    "gpt",
+    "gemini",
+    "mcp",
+    "model-context-protocol",
+    "autonomous",
+    "terminal",
+    "copilot",
+    "coding-agent"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "agent": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.3",
+    "@google/generative-ai": "^0.19.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "figures": "^6.1.0",
+    "groq-sdk": "^0.7.0",
+    "openai": "^4.52.7",
+    "ora": "^8.1.0",
+    "uuid": "^10.0.0",
+    "boxen": "^8.0.1",
+    "diff": "^7.0.0",
+    "fast-glob": "^3.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.0",
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.16.5",
+    "typescript": "^5.5.4"
+  }
+}
