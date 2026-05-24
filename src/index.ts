@@ -12,7 +12,7 @@ import config from './config/Config.js'
 import { readFileSync, existsSync } from 'fs'
 
 // Extract positional query BEFORE commander parses (avoids "unknown command" error)
-const KNOWN_SUBCOMMANDS = ['mcp', 'auth', 'help']
+const KNOWN_SUBCOMMANDS = ['mcp', 'auth', 'setup', 'help']
 const rawArgs = process.argv.slice(2)
 const firstPositional = rawArgs.find(a => !a.startsWith('-') && !rawArgs[rawArgs.indexOf(a) - 1]?.match(/^(-p|--print|-m|--model|--provider|-r|--resume|--goal|--mcp-config|--permission-mode|--max-tokens|--max-iterations)$/))
 const initialQuery = firstPositional && !KNOWN_SUBCOMMANDS.includes(firstPositional) ? firstPositional : undefined
@@ -41,6 +41,7 @@ program
   .option('--max-iterations <n>', 'Max goal loop iterations (default: 200)')
   .option('--verbose', 'Verbose tool output')
   .option('--no-banner', 'Skip the banner')
+  .option('--no-tui', 'Use classic REPL instead of TUI')
   .allowUnknownOption(false)
   .allowExcessArguments(true)
   .action(() => { /* default action — prevents commander from showing help on no-args */ })
@@ -88,6 +89,15 @@ const authCmd = new Command('auth')
     process.exit(0)
   })
 program.addCommand(authCmd)
+
+const setupCmd = new Command('setup')
+  .description('Request macOS permissions and create config files')
+  .action(async () => {
+    const { runSetup } = await import('./setup/Permissions.js')
+    await runSetup()
+    process.exit(0)
+  })
+program.addCommand(setupCmd)
 
 // ── Main Function ────────────────────────────────────────────────────────────
 
@@ -180,53 +190,103 @@ async function main() {
     process.exit(0)
   }
 
-  // ── Interactive REPL mode ──────────────────────────────────────────────────
-  if (!opts.noBanner) {
-    console.log(banner())
-  }
+  // ── Interactive mode ───────────────────────────────────────────────────────
 
-  // Handle --continue / --resume
+  // Session setup
   if (opts.continue) {
     const recent = sessionManager.getMostRecent(process.cwd())
     if (recent) {
       agent.setMessages(recent.messages)
       sessionManager.setCurrentSessionId(recent.meta.id)
-      console.log(colors.success(`✓ Resumed session '${recent.meta.name}' (${recent.messages.length} messages)`))
     }
   } else if (opts.resume) {
     const session = sessionManager.load(opts.resume) || sessionManager.loadByName(opts.resume)
     if (session) {
       agent.setMessages(session.messages)
       sessionManager.setCurrentSessionId(session.meta.id)
-      console.log(colors.success(`✓ Resumed session '${session.meta.name}'`))
-    } else {
-      console.error(colors.error(`Session '${opts.resume}' not found`))
     }
   } else {
     const session = sessionManager.createSession()
     sessionManager.setCurrentSessionId(session.meta.id)
   }
 
-  // Print provider status
   const provider = providerRegistry.getCurrentProvider()
   const model = providerRegistry.getCurrentModel()
   const mcpCount = mcpManager.getAllServers().filter((s) => s.connected).length
+
+  // ── TUI mode (default) ────────────────────────────────────────────────────
+  const useTUI = opts.tui !== false  // true unless --no-tui passed
+
+  if (useTUI) {
+    const { startTUI } = await import('./ui/TUI.js')
+
+    // Slash command handler that returns display text for TUI
+    const onSlashCommand = async (input: string): Promise<string | undefined> => {
+      const lines: string[] = []
+      const origLog   = console.log
+      const origError = console.error
+      const capture = (...args: unknown[]) =>
+        lines.push(args.map(String).join(' ').replace(/\x1b\[[0-9;]*m/g, ''))
+      console.log   = capture
+      console.error = capture
+      const fakeRepl = {
+        clearScreen: () => { lines.push('[screen cleared]') },
+        exit: () => {
+          console.log   = origLog
+          console.error = origError
+          mcpManager.disconnectAll().then(() => process.exit(0))
+        },
+        pause: () => {},
+        resume: () => {},
+        setModel: (_m: string) => {},
+      }
+      try {
+        await commandRegistry.handle(input, fakeRepl)
+      } finally {
+        console.log   = origLog
+        console.error = origError
+      }
+      return lines.length > 0 ? lines.join('\n') : undefined
+    }
+
+    startTUI({
+      agent,
+      statusInfo: { provider: provider.name, model, mcpCount, tokens: 0 },
+      onChat: async (text) => {
+        await agent.turn(text)
+        saveCurrentSession()
+      },
+      onSlashCommand,
+      initialQuery: opts.goal ? undefined : initialQuery,
+    })
+
+    // If --goal flag, start goal loop inside TUI
+    if (opts.goal) {
+      void agent.runGoalLoop(opts.goal)
+    }
+
+    // TUI runs until user exits — keep process alive
+    return
+  }
+
+  // ── Classic REPL mode (--no-tui) ─────────────────────────────────────────
+  if (!opts.noBanner) {
+    console.log(banner())
+  }
+
   const mcpInfo = mcpCount > 0 ? colors.muted(` · ${mcpCount} MCP`) : ''
   console.log(colors.muted(`  ${provider.name} / ${model}${mcpInfo}`))
   console.log(colors.muted('  /help for commands  ·  /goal <задача> для автономного режима'))
   console.log()
 
-  // If query was passed as positional arg, send as first message then continue REPL
   if (initialQuery) {
     await agent.turn(initialQuery)
   }
 
-  // Handle explicit --goal flag
   if (opts.goal) {
     await agent.runGoalLoop(opts.goal)
   }
 
-  // Start REPL
   await startREPL(opts.verbose || false)
 }
 
@@ -317,18 +377,20 @@ async function startREPL(verbose: boolean) {
     })
   }
 
-  function saveCurrentSession() {
-    const currentId = sessionManager.getCurrentSessionId()
-    if (currentId) {
-      const session = sessionManager.load(currentId)
-      if (session) {
-        session.messages = agent.getMessages()
-        sessionManager.save(session)
-      }
+  prompt()
+}
+
+// ── Session save helper (shared by TUI and REPL) ─────────────────────────────
+
+function saveCurrentSession() {
+  const currentId = sessionManager.getCurrentSessionId()
+  if (currentId) {
+    const session = sessionManager.load(currentId)
+    if (session) {
+      session.messages = agent.getMessages()
+      sessionManager.save(session)
     }
   }
-
-  prompt()
 }
 
 // ── Graceful exit ────────────────────────────────────────────────────────────

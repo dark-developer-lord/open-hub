@@ -5,6 +5,7 @@ import { goalManager } from './GoalManager.js'
 import { Message, ToolUseBlock, ToolResultBlock, TextBlock, ChatOptions } from '../providers/types.js'
 import { colors, formatToolCall, separator } from '../ui/colors.js'
 import config from '../config/Config.js'
+import { EventEmitter } from 'events'
 
 export interface AgentOptions {
   verbose?: boolean
@@ -61,13 +62,45 @@ Best practices:
 6. Be thorough — complete tasks fully
 `
 
-export class Agent {
+export class Agent extends EventEmitter {
   private messages: Message[] = []
   private totalTokens = { input: 0, output: 0 }
   private verbose: boolean
 
   constructor(options: AgentOptions = {}) {
+    super()
     this.verbose = options.verbose || false
+  }
+
+  /** True when TUI is active (has event listeners) */
+  private isTUI(): boolean {
+    return this.listenerCount('text') > 0
+  }
+
+  /** Write assistant text — event in TUI mode, stdout in REPL mode */
+  private writeText(text: string): void {
+    if (this.isTUI()) {
+      this.emit('text', text)
+    } else {
+      process.stdout.write('\n' + colors.assistant('Agent') + ' ' + colors.dim('›') + ' ')
+      process.stdout.write(text + '\n')
+    }
+  }
+
+  private writeToolStart(name: string): void {
+    if (this.isTUI()) {
+      this.emit('toolStart', name)
+    } else if (!this.verbose) {
+      process.stdout.write(colors.tool(`  ⚙ ${name}`) + colors.muted(' ...'))
+    }
+  }
+
+  private writeToolEnd(name: string, success: boolean): void {
+    if (this.isTUI()) {
+      this.emit('toolEnd', name, success)
+    } else if (!this.verbose) {
+      process.stdout.write(' ' + (success ? colors.success('✓') : colors.error('✗')) + '\n')
+    }
   }
 
   getMessages(): Message[] {
@@ -151,8 +184,7 @@ export class Agent {
       if (text) {
         totalText += text
         if (!goalManager.hasActiveGoal()) {
-          process.stdout.write('\n' + colors.assistant('Agent') + ' ' + colors.dim('›') + ' ')
-          process.stdout.write(text + '\n')
+          this.writeText(text)
         }
       }
 
@@ -163,10 +195,7 @@ export class Agent {
           continueLoop = false
           break
         }
-        if (text) {
-          process.stdout.write('\n' + colors.assistant('Agent') + ' ' + colors.dim('›') + ' ')
-          process.stdout.write(text + '\n')
-        }
+        this.writeText(text)
       }
 
       // Execute tool calls
@@ -186,7 +215,7 @@ export class Agent {
           console.log('\n' + separator())
           console.log(formatToolCall(tc.name, tc.input))
         } else {
-          process.stdout.write(colors.tool(`  ⚙ ${tc.name}`) + colors.muted(' ...'))
+          this.writeToolStart(tc.name)
         }
 
         // Determine if it's an MCP tool or built-in
@@ -200,7 +229,7 @@ export class Agent {
         }
 
         if (!this.verbose) {
-          process.stdout.write(' ' + (result.success ? colors.success('✓') : colors.error('✗')) + '\n')
+          this.writeToolEnd(tc.name, result.success)
         }
 
         if (this.verbose) {
@@ -223,6 +252,7 @@ export class Agent {
       this.messages.push({ role: 'user', content: toolResults })
     }
 
+    this.emit('turnEnd')
     return {
       text: totalText,
       toolCalls: totalToolCalls,
@@ -241,6 +271,7 @@ export class Agent {
     console.log('\n' + colors.goal(`🎯 GOAL SET: ${goalDescription}`))
     console.log(colors.muted(`   Max iterations: ${goal.maxIterations}`))
     console.log(separator())
+    this.emit('goalStart', goalDescription)
 
     // Start with the goal as the first user message
     const initialPrompt = `I need you to achieve the following goal completely and autonomously:\n\n**Goal**: ${goalDescription}\n\nStart by analyzing what needs to be done, create a plan, and begin executing it. Continue until the goal is fully achieved.`
@@ -254,7 +285,9 @@ export class Agent {
 
       const iteration = (goalManager.getGoal()?.iterations || 0) + 1
       const maxIter = goalManager.getGoal()?.maxIterations || 50
-      process.stdout.write(colors.muted(`\n[iter ${iteration}/${maxIter}] `))
+      if (!this.isTUI()) {
+        process.stdout.write(colors.muted(`\n[iter ${iteration}/${maxIter}] `))
+      }
 
       goalManager.incrementIteration()
 
@@ -287,6 +320,7 @@ export class Agent {
         break
       }
     }
+    this.emit('goalEnd')
   }
 
   /**
